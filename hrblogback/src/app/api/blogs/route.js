@@ -6,7 +6,8 @@ export async function GET() {
     const { data: blogs, error } = await supabase
       .from("blogs")
       .select("id, slug, blog_title, blog_description, image_url, created_at")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(12);
 
     if (error) {
       console.error("Supabase error fetching blogs:", error);

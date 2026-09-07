@@ -123,3 +123,82 @@ Writing Guidelines:
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
 }
+export async function POST(req) {
+        const body = await req.json();
+        const {fprompt} = body
+    try {
+        const prompt = `${fprompt}
+
+Writing Guidelines:
+- Tone: Conversational, senior engineer perspective, sharing practical developer experiences and real-world trade-offs.
+- Content Depth: Write detailed, multi-paragraph explanations across 3 clear sub-headings (H2). Include 1 bullet list of key takeaways and 1 quote block.
+- SVG Banner: Create a very basic 800x400 minimalist abstract SVG string (under 15 lines of code) to save output budget.`;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-3.6-flash',
+            contents: prompt,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: blogSchema,
+                temperature: 0.7,
+                maxOutputTokens: 8192
+            }
+        });
+
+        let generatedText;
+        try {
+            generatedText = JSON.parse(response.text);
+        } catch (parseErr) {
+            throw new Error(`JSON Parsing Truncated: ${parseErr.message}`);
+        }
+
+        // Convert SVG string to Data URI
+        const rawSvg = generatedText.svg_illustration;
+        const base64Svg = Buffer.from(rawSvg).toString('base64');
+        const finalImageUrl = `data:image/svg+xml;base64,${base64Svg}`;
+
+        const uniqueSlug = `${generatedText.slug.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`;
+
+        // Combine Image block with body content blocks
+        const updatedBlocks = [
+            {
+                type: 'image',
+                data: {
+                    url: finalImageUrl,
+                    caption: generatedText.blog_title,
+                    stretched: true,
+                    withBorder: false,
+                    withBackground: false
+                }
+            },
+            ...generatedText.blocks
+        ];
+
+        const content = {
+            time: Date.now(),
+            blocks: updatedBlocks,
+            version: '2.30.0'
+        };
+
+        // Store in Supabase
+        const { data: blogRecord, error: dbError } = await supabase
+            .from('blogs')
+            .insert([
+                {
+                    blog_title: generatedText.blog_title,
+                    slug: uniqueSlug,
+                    blog_description: generatedText.blog_description,
+                    image_url: finalImageUrl,
+                    content: content,
+                }
+            ])
+            .select();
+
+        if (dbError) throw dbError;
+
+        return NextResponse.json({ success: true, data: blogRecord });
+    } catch (err) {
+        console.error("Cron Handler Error:", err);
+        return NextResponse.json({ error: err.message }, { status: 500 });
+    }
+}
