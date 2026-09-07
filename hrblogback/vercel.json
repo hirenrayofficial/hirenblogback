@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/blogs/AIBlogs",
+      "schedule": "0 12 * * *"
+    }
+  ]
+}
